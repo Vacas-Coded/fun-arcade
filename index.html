@@ -151,16 +151,21 @@ $("connect").onclick = async () => {
 };
 
 // ---------------- Game ----------------
+// Physics run at a fixed 60 steps/s, so the game feels the same on 60 Hz and 120 Hz phones.
 const cv = $("c"), g = cv.getContext("2d"), W = cv.width, H = cv.height;
-let state = "menu", bird, pipes, pumps, score, lives, frame, onchainRun = null, speed, invuln;
-function reset(l) { bird = { x: 110, y: H / 2, vy: 0, r: 18 }; pipes = []; pumps = []; score = 0; lives = l; frame = 0; speed = 2.6; invuln = 0; hud(); }
+const P = { gravity: 0.21, flap: -5.0, maxFall: 6.2, hitShrink: 0.72, spacing: 235, gap0: 222, gapMin: 150, speed0: 2.1, speedMax: 4.0, maxShift: 170 };
+let state = "menu", bird, pipes, pumps, score, lives, frame, onchainRun = null, speed, invuln, ready, floaters;
+function reset(l) { bird = { x: 110, y: H / 2, vy: 0, r: 18 }; pipes = []; pumps = []; floaters = []; score = 0; lives = l; frame = 0; speed = P.speed0; invuln = 0; ready = true; hud(); }
 function hud() { $("hudScore").textContent = score; $("hudLives").textContent = state === "play" ? "♥".repeat(lives) : ""; }
-function flap() { if (state === "play") bird.vy = -6.6; }
+function flap() { if (state !== "play") return; if (ready) { ready = false; } bird.vy = P.flap; }
 addEventListener("keydown", e => { if (e.code === "Space" || e.code === "ArrowUp") { e.preventDefault(); flap(); } });
-cv.addEventListener("pointerdown", flap);
+cv.addEventListener("pointerdown", e => { e.preventDefault(); flap(); });
 
 function spawn() {
-  const gap = Math.max(150, 210 - score * 2), top = 60 + Math.random() * (H - gap - 160);
+  const gap = Math.max(P.gapMin, P.gap0 - score * 2);
+  const last = pipes[pipes.length - 1];
+  let top = 70 + Math.random() * (H - gap - 170);
+  if (last) top = Math.max(last.top - P.maxShift, Math.min(last.top + P.maxShift, top)); // always reachable from the previous gap
   pipes.push({ x: W + 30, top, gap, w: 58, passed: false });
   if (Math.random() < 0.35) pumps.push({ x: W + 30 + 29, y: top + gap / 2, taken: false });
 }
@@ -169,7 +174,7 @@ function candle(x, y, w, h, col) {
   g.fillStyle = "rgba(255,255,255,.12)"; g.fillRect(x + 6, y, 8, h);
 }
 function drawBird() {
-  const b = bird; g.save(); g.translate(b.x, b.y); g.rotate(Math.max(-0.5, Math.min(0.9, b.vy / 10)));
+  const b = bird; g.save(); g.translate(b.x, b.y); g.rotate(Math.max(-0.45, Math.min(0.8, b.vy / 9)));
   if (invuln > 0 && Math.floor(invuln / 5) % 2) g.globalAlpha = 0.4;
   g.fillStyle = "#ffd60a"; g.beginPath(); g.arc(0, 0, b.r, 0, 7); g.fill(); g.strokeStyle = "#b8860b"; g.lineWidth = 3; g.stroke();
   g.fillStyle = "#fff"; g.beginPath(); g.ellipse(-12, 4 + Math.sin(frame / 3) * 4, 11, 6, -0.5, 0, 7); g.fill();
@@ -184,32 +189,50 @@ function bg() {
 function hit() {
   if (invuln > 0) return; lives -= 1; hud();
   if (lives <= 0) return gameOver();
-  invuln = 70; bird.vy = -5;
+  invuln = 90; bird.vy = P.flap * 0.8; // short grace period after losing a life
 }
-function step() {
-  frame++; bg();
-  if (state === "play") {
-    bird.vy += 0.36; bird.y += bird.vy; if (invuln > 0) invuln--;
-    if (frame % Math.max(70, 105 - score) === 0) spawn();
-    speed = Math.min(5, 2.6 + score * 0.04);
-    for (const p of pipes) {
-      p.x -= speed;
-      if (!p.passed && p.x + p.w < bird.x) { p.passed = true; score++; hud(); }
-      if (bird.x + bird.r > p.x && bird.x - bird.r < p.x + p.w && (bird.y - bird.r < p.top || bird.y + bird.r > p.top + p.gap)) hit();
-    }
-    for (const u of pumps) { u.x -= speed; if (!u.taken && Math.hypot(u.x - bird.x, u.y - bird.y) < bird.r + 12) { u.taken = true; score += 3; hud(); } }
-    pipes = pipes.filter(p => p.x > -80); pumps = pumps.filter(u => u.x > -40 && !u.taken);
-    if (bird.y > H - bird.r || bird.y < bird.r) { hit(); bird.y = Math.max(bird.r, Math.min(H - bird.r, bird.y)); bird.vy = 0; }
+function update() {
+  frame++;
+  if (state !== "play") return;
+  if (ready) { bird.y = H / 2 + Math.sin(frame / 12) * 10; return; } // hover until the first tap
+  bird.vy = Math.min(P.maxFall, bird.vy + P.gravity); bird.y += bird.vy; if (invuln > 0) invuln--;
+  speed = Math.min(P.speedMax, P.speed0 + score * 0.04);
+  const last = pipes[pipes.length - 1];
+  if (!last || last.x < W + 30 - P.spacing) spawn();
+  const r = bird.r * P.hitShrink;
+  for (const p of pipes) {
+    p.x -= speed;
+    if (!p.passed && p.x + p.w < bird.x) { p.passed = true; score++; hud(); }
+    if (bird.x + r > p.x && bird.x - r < p.x + p.w && (bird.y - r < p.top || bird.y + r > p.top + p.gap)) hit();
   }
+  for (const u of pumps) { u.x -= speed; if (!u.taken && Math.hypot(u.x - bird.x, u.y - bird.y) < bird.r + 14) { u.taken = true; score += 3; hud(); floaters.push({ x: u.x, y: u.y, t: 40 }); } }
+  for (const f of floaters) { f.y -= 1; f.t--; }
+  pipes = pipes.filter(p => p.x > -80); pumps = pumps.filter(u => u.x > -40 && !u.taken); floaters = floaters.filter(f => f.t > 0);
+  if (bird.y < bird.r) { bird.y = bird.r; bird.vy = 0; } // the ceiling stops you, it does not kill
+  if (bird.y > H - bird.r) { bird.y = H - bird.r; bird.vy = P.flap; hit(); }
+}
+function draw() {
+  bg();
   for (const p of pipes) { candle(p.x, 0, p.w, p.top, "#ff4d6d"); candle(p.x, p.top + p.gap, p.w, H - p.top - p.gap, "#ff4d6d"); }
   for (const u of pumps) { g.fillStyle = "#2ee59d"; g.fillRect(u.x - 7, u.y - 16, 14, 32); g.fillRect(u.x - 1, u.y - 24, 2, 48); g.fillStyle = "#fff"; g.font = "bold 11px sans-serif"; g.textAlign = "center"; g.fillText("+3", u.x, u.y + 4); }
-  drawBird(); requestAnimationFrame(step);
+  for (const f of floaters) { g.globalAlpha = f.t / 40; g.fillStyle = "#2ee59d"; g.font = "bold 22px sans-serif"; g.textAlign = "center"; g.fillText("+3", f.x, f.y); g.globalAlpha = 1; }
+  drawBird();
+  if (state === "play" && ready) { g.fillStyle = "#fff"; g.font = "bold 24px sans-serif"; g.textAlign = "center"; g.fillText("Tap to flap!", W / 2, H / 2 + 90); }
 }
+let acc = 0, lastT = performance.now();
+function loop(t) {
+  acc += Math.min(250, t - lastT); lastT = t;
+  while (acc >= 1000 / 60) { update(); acc -= 1000 / 60; }
+  draw(); requestAnimationFrame(loop);
+}
+window.__game = { P, get state() { return state; }, get bird() { return bird; }, get pipes() { return pipes; }, get score() { return score; }, flap, update, start: l => start(l) };
 
 async function gameOver() {
   state = "over"; hud(); const final = score;
   $("menu").style.display = "flex";
+  const best = Math.max(final, Number(localStorage.getItem("funBest") || 0)); localStorage.setItem("funBest", best);
   $("menu").querySelector("h2").textContent = `Score: ${final}`;
+  $("playFree").textContent = `Practice again (best ${best})`;
   if (onchainRun !== null) {
     status("Saving your score on-chain… confirm in your wallet.");
     try {
@@ -230,7 +253,7 @@ $("playChain").onclick = async () => {
     onchainRun = ev.args.runId; start(Number(ev.args.lives));
   } catch (e) { status("Run not started: " + (e.shortMessage || "cancelled")); }
 };
-reset(1); step(); refreshBoard();
+reset(1); requestAnimationFrame(loop); refreshBoard();
 </script>
 </body>
 </html>

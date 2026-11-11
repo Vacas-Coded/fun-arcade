@@ -1,0 +1,32 @@
+# FUN Arcade · Pump & Flap
+
+**Play:** https://vacas-coded.github.io/fun-arcade/
+
+A flappy-style arcade game on **Robinhood Chain testnet** where you need **$FUN** to play.
+Dodge the red rug candles, grab green pumps (+3) and become the champion of the day, recorded on-chain.
+
+## How it works
+- **Hold to play:** your wallet needs at least **10,000 $FUN** to open an on-chain run. Tokens are never spent; you only have to hold them.
+- **More FUN = more lives:** +1 life for every 250,000 FUN held, up to 5 lives.
+- **On-chain runs:** `play()` opens a run, and `submitScore(runId, score)` records it once, within 1 hour.
+- **Daily champion:** the best score of each UTC day is stored on-chain (`championOf(day)`).
+- **Practice mode:** play without a wallet. Practice scores are not recorded.
+
+## Contracts (Robinhood Chain testnet, chainId 46630)
+| | Address |
+|---|---|
+| $FUN (vibe/vibe launch #2461) | `0x7Cc4e096dd2309203A2102B34EEe6550722EF386` |
+| FunArcade | `0x9a1e51d31eF5CF7AaF90f7D4F9D43f6cc4D08B7C` |
+
+Get $FUN: https://testnet.vibevibe.fun/token/0x7Cc4e096dd2309203A2102B34EEe6550722EF386
+
+The source of `FunArcade` is in [`contracts/FunArcade.sol`](contracts/FunArcade.sol). It has no owner and no admin keys.
+
+## Stack
+A single static `index.html` (canvas + ethers v6) and a Solidity 0.8.24 contract. Vibe-coded.
+
+## Roadmap
+- Once $FUN graduates and becomes transferable: pay-per-run mode, with the entry fee going to a daily prize pot for the champion and a share burned.
+- More games in the arcade: snake-style "Degen Snake" and "Rug Runner".
+
+Testnet only. Test tokens have no monetary value.

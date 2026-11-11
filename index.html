@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>FUN Arcade · Pump & Flap</title>
+<meta name="description" content="Hold $FUN to play Pump & Flap on Robinhood Chain testnet. Dodge rug candles, catch green pumps, become the daily on-chain champion.">
+<link rel="icon" href="logo.png">
+<style>
+  :root { --bg:#120a24; --card:#1d1238; --pink:#ff3cac; --blue:#2b86c5; --green:#2ee59d; --red:#ff4d6d; --gold:#ffd60a; --text:#f4efff; --mute:#a99bc9; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:radial-gradient(circle at 50% 0,#2a1655,var(--bg) 60%); color:var(--text); font:15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; min-height:100vh; }
+  header { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; max-width:980px; margin:0 auto; }
+  header h1 { font-size:20px; margin:0; letter-spacing:.5px; }
+  header h1 b { background:linear-gradient(90deg,var(--pink),var(--blue)); -webkit-background-clip:text; color:transparent; }
+  button { font:inherit; border:0; border-radius:12px; padding:10px 14px; cursor:pointer; font-weight:700; }
+  .btn { background:linear-gradient(90deg,var(--pink),#784ba0); color:#fff; }
+  .btn2 { background:#2d2050; color:var(--text); }
+  .btn:disabled,.btn2:disabled { opacity:.5; cursor:default; }
+  main { max-width:980px; margin:0 auto; padding:0 12px 40px; display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:16px; }
+  @media (max-width:820px) { main { grid-template-columns:1fr; } }
+  .stage { position:relative; background:var(--card); border-radius:18px; overflow:hidden; aspect-ratio:9/14; max-height:78vh; margin:0 auto; width:100%; }
+  canvas { width:100%; height:100%; display:block; touch-action:manipulation; }
+  .overlay { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; text-align:center; padding:20px; background:rgba(18,10,36,.72); }
+  .overlay h2 { margin:0; font-size:30px; }
+  .overlay p { margin:0; color:var(--mute); max-width:320px; }
+  .side { display:flex; flex-direction:column; gap:12px; }
+  .card { background:var(--card); border-radius:16px; padding:14px; }
+  .card h3 { margin:0 0 8px; font-size:14px; text-transform:uppercase; letter-spacing:1px; color:var(--mute); }
+  .row { display:flex; justify-content:space-between; gap:8px; padding:3px 0; }
+  .mono { font-family:ui-monospace,Menlo,monospace; font-size:13px; }
+  ol { margin:0; padding-left:20px; } li { padding:2px 0; }
+  a { color:var(--gold); }
+  .hud { position:absolute; top:10px; left:0; right:0; display:flex; justify-content:space-between; padding:0 14px; font-weight:800; font-size:20px; pointer-events:none; text-shadow:0 2px 0 #000; }
+  .small { font-size:12px; color:var(--mute); }
+  #status { min-height:20px; }
+</style>
+</head>
+<body>
+<header>
+  <h1><b>FUN</b> Arcade · Pump &amp; Flap</h1>
+  <button class="btn2" id="connect">Connect wallet</button>
+</header>
+<main>
+  <div>
+    <div class="stage" id="stage">
+      <canvas id="c" width="450" height="700"></canvas>
+      <div class="hud"><span id="hudScore">0</span><span id="hudLives"></span></div>
+      <div class="overlay" id="menu">
+        <h2>Pump &amp; Flap</h2>
+        <p>Tap / space to flap. Dodge the red rug candles, grab green pumps (+3). Hold <b>$FUN</b> to play on-chain: more FUN = more lives. Best score of the day is crowned on-chain.</p>
+        <button class="btn" id="playChain" disabled>Play on-chain (hold FUN)</button>
+        <button class="btn2" id="playFree">Practice run (not recorded)</button>
+        <div id="status" class="small"></div>
+      </div>
+    </div>
+  </div>
+  <div class="side">
+    <div class="card">
+      <h3>Your wallet</h3>
+      <div class="row"><span>Address</span><span class="mono" id="addr">—</span></div>
+      <div class="row"><span>$FUN</span><span class="mono" id="bal">—</span></div>
+      <div class="row"><span>Lives per run</span><span class="mono" id="lives">—</span></div>
+      <div class="row"><span>Best score</span><span class="mono" id="best">—</span></div>
+      <p class="small">Need ≥ 10,000 FUN to play on-chain. +1 life per 250k FUN (max 5). <a id="buyLink" target="_blank" rel="noopener">Get $FUN on vibe/vibe ↗</a></p>
+    </div>
+    <div class="card">
+      <h3>Champion of the day</h3>
+      <div class="row"><span class="mono" id="champ">—</span><span class="mono" id="champScore"></span></div>
+    </div>
+    <div class="card">
+      <h3>All-time top 10</h3>
+      <ol id="board"><li class="small">loading…</li></ol>
+    </div>
+    <div class="card small">
+      Robinhood Chain <b>testnet</b> (chainId 46630). Test tokens have no value.
+      Contracts: <a id="arcadeLink" target="_blank" rel="noopener">FunArcade</a> · <a id="funLink" target="_blank" rel="noopener">$FUN</a>.
+      Open source: <a href="https://github.com/Vacas-Coded/fun-arcade" target="_blank" rel="noopener">GitHub</a>.
+    </div>
+  </div>
+</main>
+<script type="module">
+import { BrowserProvider, JsonRpcProvider, Contract, formatUnits } from "https://esm.sh/ethers@6.13.4";
+
+const CFG = {
+  chainId: 46630, chainHex: "0xb626", rpc: "https://rpc.testnet.chain.robinhood.com",
+  explorer: "https://explorer.testnet.chain.robinhood.com",
+  fun: "0x7Cc4e096dd2309203A2102B34EEe6550722EF386",
+  arcade: "0x9a1e51d31eF5CF7AaF90f7D4F9D43f6cc4D08B7C",
+  deployBlock: 0x909e59a,
+};
+const ARCADE_ABI = [
+  "function play() returns (uint256)", "function submitScore(uint256 runId, uint32 score)",
+  "function livesFor(address) view returns (uint8)", "function bestScore(address) view returns (uint32)",
+  "function today() view returns (uint256 day, address champion, uint32 score)", "function minHold() view returns (uint256)",
+  "event RunStarted(uint256 indexed runId, address indexed player, uint8 lives, uint256 funBalance)",
+  "event ScoreSubmitted(uint256 indexed runId, address indexed player, uint32 score, uint256 indexed day)",
+];
+const ERC20 = ["function balanceOf(address) view returns (uint256)"];
+const $ = id => document.getElementById(id);
+$("buyLink").href = `https://testnet.vibevibe.fun/token/${CFG.fun}`;
+$("funLink").href = `${CFG.explorer}/address/${CFG.fun}`;
+$("arcadeLink").href = `${CFG.explorer}/address/${CFG.arcade}`;
+
+const ro = new JsonRpcProvider(CFG.rpc, CFG.chainId, { staticNetwork: true });
+const arcadeRO = new Contract(CFG.arcade, ARCADE_ABI, ro);
+let signer = null, me = null, myLives = 0;
+const short = a => a ? a.slice(0, 6) + "…" + a.slice(-4) : "—";
+const status = t => $("status").textContent = t;
+
+async function refreshBoard() {
+  try {
+    const [, champ, cs] = await arcadeRO.today();
+    $("champ").textContent = cs > 0 ? short(champ) : "nobody yet";
+    $("champScore").textContent = cs > 0 ? cs.toString() : "";
+    const head = await ro.getBlockNumber(); const best = new Map();
+    for (let from = CFG.deployBlock; from <= head; from += 50000) {
+      const logs = await arcadeRO.queryFilter(arcadeRO.filters.ScoreSubmitted(), from, Math.min(head, from + 49999));
+      for (const l of logs) { const p = l.args.player, s = Number(l.args.score); if (!best.has(p) || best.get(p) < s) best.set(p, s); }
+    }
+    const top = [...best.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
+    $("board").innerHTML = top.length ? top.map(([p, s]) => `<li><span class="mono">${short(p)}</span> — <b>${s}</b></li>`).join("") : '<li class="small">No scores yet. Be the first!</li>';
+  } catch (e) { $("board").innerHTML = '<li class="small">Leaderboard unavailable right now.</li>'; }
+}
+
+async function refreshMe() {
+  if (!me) return;
+  const fun = new Contract(CFG.fun, ERC20, ro);
+  const [b, l, best] = await Promise.all([fun.balanceOf(me), arcadeRO.livesFor(me), arcadeRO.bestScore(me)]);
+  myLives = Number(l);
+  $("addr").textContent = short(me);
+  $("bal").textContent = Number(formatUnits(b, 18)).toLocaleString(undefined, { maximumFractionDigits: 0 });
+  $("lives").textContent = myLives || "0 (need FUN)";
+  $("best").textContent = best.toString();
+  $("playChain").disabled = myLives === 0;
+  status(myLives === 0 ? "You need at least 10,000 $FUN to play on-chain." : `Ready: ${myLives} lives per run.`);
+}
+
+$("connect").onclick = async () => {
+  if (!window.ethereum) { status("No wallet found. Open this page in your wallet's browser (Rabby, MetaMask…)."); return; }
+  try {
+    await window.ethereum.request({ method: "eth_requestAccounts" });
+    try { await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: CFG.chainHex }] }); }
+    catch (e) {
+      await window.ethereum.request({ method: "wallet_addEthereumChain", params: [{ chainId: CFG.chainHex, chainName: "Robinhood Chain Testnet",
+        nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: [CFG.rpc], blockExplorerUrls: [CFG.explorer] }] });
+    }
+    const bp = new BrowserProvider(window.ethereum); signer = await bp.getSigner(); me = await signer.getAddress();
+    $("connect").textContent = short(me); await refreshMe();
+  } catch (e) { status("Connection cancelled."); }
+};
+
+// ---------------- Game ----------------
+const cv = $("c"), g = cv.getContext("2d"), W = cv.width, H = cv.height;
+let state = "menu", bird, pipes, pumps, score, lives, frame, onchainRun = null, speed, invuln;
+function reset(l) { bird = { x: 110, y: H / 2, vy: 0, r: 18 }; pipes = []; pumps = []; score = 0; lives = l; frame = 0; speed = 2.6; invuln = 0; hud(); }
+function hud() { $("hudScore").textContent = score; $("hudLives").textContent = state === "play" ? "♥".repeat(lives) : ""; }
+function flap() { if (state === "play") bird.vy = -6.6; }
+addEventListener("keydown", e => { if (e.code === "Space" || e.code === "ArrowUp") { e.preventDefault(); flap(); } });
+cv.addEventListener("pointerdown", flap);
+
+function spawn() {
+  const gap = Math.max(150, 210 - score * 2), top = 60 + Math.random() * (H - gap - 160);
+  pipes.push({ x: W + 30, top, gap, w: 58, passed: false });
+  if (Math.random() < 0.35) pumps.push({ x: W + 30 + 29, y: top + gap / 2, taken: false });
+}
+function candle(x, y, w, h, col) {
+  g.fillStyle = col; g.fillRect(x + w / 2 - 2, y - 14, 4, h + 28); g.fillRect(x, y, w, h);
+  g.fillStyle = "rgba(255,255,255,.12)"; g.fillRect(x + 6, y, 8, h);
+}
+function drawBird() {
+  const b = bird; g.save(); g.translate(b.x, b.y); g.rotate(Math.max(-0.5, Math.min(0.9, b.vy / 10)));
+  if (invuln > 0 && Math.floor(invuln / 5) % 2) g.globalAlpha = 0.4;
+  g.fillStyle = "#ffd60a"; g.beginPath(); g.arc(0, 0, b.r, 0, 7); g.fill(); g.strokeStyle = "#b8860b"; g.lineWidth = 3; g.stroke();
+  g.fillStyle = "#fff"; g.beginPath(); g.ellipse(-12, 4 + Math.sin(frame / 3) * 4, 11, 6, -0.5, 0, 7); g.fill();
+  g.fillStyle = "#111"; g.beginPath(); g.arc(7, -5, 3.5, 0, 7); g.fill();
+  g.fillStyle = "#ff7b00"; g.beginPath(); g.moveTo(16, 0); g.lineTo(26, 3); g.lineTo(16, 7); g.fill();
+  g.fillStyle = "#7a5a00"; g.font = "bold 12px sans-serif"; g.textAlign = "center"; g.fillText("F", -2, 6); g.restore();
+}
+function bg() {
+  const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, "#2a1655"); gr.addColorStop(1, "#120a24"); g.fillStyle = gr; g.fillRect(0, 0, W, H);
+  g.strokeStyle = "rgba(255,255,255,.05)"; for (let y = 40; y < H; y += 60) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
+}
+function hit() {
+  if (invuln > 0) return; lives -= 1; hud();
+  if (lives <= 0) return gameOver();
+  invuln = 70; bird.vy = -5;
+}
+function step() {
+  frame++; bg();
+  if (state === "play") {
+    bird.vy += 0.36; bird.y += bird.vy; if (invuln > 0) invuln--;
+    if (frame % Math.max(70, 105 - score) === 0) spawn();
+    speed = Math.min(5, 2.6 + score * 0.04);
+    for (const p of pipes) {
+      p.x -= speed;
+      if (!p.passed && p.x + p.w < bird.x) { p.passed = true; score++; hud(); }
+      if (bird.x + bird.r > p.x && bird.x - bird.r < p.x + p.w && (bird.y - bird.r < p.top || bird.y + bird.r > p.top + p.gap)) hit();
+    }
+    for (const u of pumps) { u.x -= speed; if (!u.taken && Math.hypot(u.x - bird.x, u.y - bird.y) < bird.r + 12) { u.taken = true; score += 3; hud(); } }
+    pipes = pipes.filter(p => p.x > -80); pumps = pumps.filter(u => u.x > -40 && !u.taken);
+    if (bird.y > H - bird.r || bird.y < bird.r) { hit(); bird.y = Math.max(bird.r, Math.min(H - bird.r, bird.y)); bird.vy = 0; }
+  }
+  for (const p of pipes) { candle(p.x, 0, p.w, p.top, "#ff4d6d"); candle(p.x, p.top + p.gap, p.w, H - p.top - p.gap, "#ff4d6d"); }
+  for (const u of pumps) { g.fillStyle = "#2ee59d"; g.fillRect(u.x - 7, u.y - 16, 14, 32); g.fillRect(u.x - 1, u.y - 24, 2, 48); g.fillStyle = "#fff"; g.font = "bold 11px sans-serif"; g.textAlign = "center"; g.fillText("+3", u.x, u.y + 4); }
+  drawBird(); requestAnimationFrame(step);
+}
+
+async function gameOver() {
+  state = "over"; hud(); const final = score;
+  $("menu").style.display = "flex";
+  $("menu").querySelector("h2").textContent = `Score: ${final}`;
+  if (onchainRun !== null) {
+    status("Saving your score on-chain… confirm in your wallet.");
+    try {
+      const ac = new Contract(CFG.arcade, ARCADE_ABI, signer);
+      const tx = await ac.submitScore(onchainRun, final); await tx.wait();
+      status(`Score ${final} recorded on-chain ✔`); onchainRun = null; await Promise.all([refreshMe(), refreshBoard()]);
+    } catch (e) { status("Score not saved (rejected or expired). Runs expire 1 h after starting."); }
+  } else status("Practice run — connect a wallet with FUN to compete.");
+}
+function start(l) { reset(l); state = "play"; $("menu").style.display = "none"; hud(); }
+$("playFree").onclick = () => { onchainRun = null; start(1); };
+$("playChain").onclick = async () => {
+  try {
+    status("Opening your run on-chain… confirm in your wallet.");
+    const ac = new Contract(CFG.arcade, ARCADE_ABI, signer);
+    const tx = await ac.play(); const rc = await tx.wait();
+    const ev = rc.logs.map(l => { try { return ac.interface.parseLog(l); } catch { return null; } }).find(x => x && x.name === "RunStarted");
+    onchainRun = ev.args.runId; start(Number(ev.args.lives));
+  } catch (e) { status("Run not started: " + (e.shortMessage || "cancelled")); }
+};
+reset(1); step(); refreshBoard();
+</script>
+</body>
+</html>

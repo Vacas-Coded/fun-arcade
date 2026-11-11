@@ -12,6 +12,15 @@ Dodge the red rug candles, grab green pumps (+3) and become the champion of the 
 - **Daily champion:** the best score of each UTC day is stored on-chain (`championOf(day)`).
 - **Practice mode:** play without a wallet. Practice scores are not recorded.
 
+## Features
+- **Buy $FUN in-game:** one tap buys straight from the $FUN bonding curve on vibe/vibe (0.0002 / 0.0005 / 0.001 ETH).
+- **Holder perks:** holders of 10k+ FUN get the green Holder skin. Holders of 250k+ get the 💎 Diamond skin and start every run with a shield.
+- **💎 Shield pickups:** a shield absorbs one hit.
+- **🔥 Streaks:** +5 bonus every 10 candles in a row without getting hit.
+- **Share your score on X** after every run.
+- Synth sounds (with mute) and haptics on mobile. Physics at a fixed 60 Hz, so it plays the same on 60 Hz and 120 Hz screens.
+- Live arcade stats: on-chain runs, players, champion of the day and all-time top 10.
+
 ## Contracts (Robinhood Chain testnet, chainId 46630)
 | | Address |
 |---|---|

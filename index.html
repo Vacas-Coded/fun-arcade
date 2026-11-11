@@ -51,7 +51,10 @@
         <p>Tap / space to flap. Dodge the red rug candles, grab green pumps (+3). Hold <b>$FUN</b> to play on-chain: more FUN = more lives. Best score of the day is crowned on-chain.</p>
         <button class="btn" id="playChain" disabled>Play on-chain (hold FUN)</button>
         <button class="btn2" id="playFree">Practice run (not recorded)</button>
+        <button class="btn" id="quickBuy" style="display:none">Buy FUN &amp; play on-chain (0.0005 ETH)</button>
+        <button class="btn2" id="share" style="display:none">Share score on X 🐦</button>
         <div id="status" class="small"></div>
+        <button class="btn2" id="mute" style="position:absolute;top:10px;right:10px;padding:6px 10px">🔊</button>
       </div>
     </div>
   </div>
@@ -62,7 +65,15 @@
       <div class="row"><span>$FUN</span><span class="mono" id="bal">—</span></div>
       <div class="row"><span>Lives per run</span><span class="mono" id="lives">—</span></div>
       <div class="row"><span>Best score</span><span class="mono" id="best">—</span></div>
-      <p class="small">Need ≥ 10,000 FUN to play on-chain. +1 life per 250k FUN (max 5). <a id="buyLink" target="_blank" rel="noopener">Get $FUN on vibe/vibe ↗</a></p>
+      <div class="row"><span>Skin</span><span class="mono" id="skin">—</span></div>
+      <p class="small">Need ≥ 10,000 FUN to play on-chain. +1 life per 250k FUN (max 5). Hold ≥ 250k FUN: start every run with a 💎 shield and the Diamond skin.</p>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn buy" data-eth="0.0002">Buy FUN · 0.0002 ETH</button><button class="btn buy" data-eth="0.0005">0.0005 ETH</button><button class="btn buy" data-eth="0.001">0.001 ETH</button></div>
+      <p class="small">Buys straight from the $FUN bonding curve on vibe/vibe. <a id="buyLink" target="_blank" rel="noopener">Token page ↗</a></p>
+    </div>
+    <div class="card">
+      <h3>Arcade stats</h3>
+      <div class="row"><span>On-chain runs</span><span class="mono" id="runs">—</span></div>
+      <div class="row"><span>Players</span><span class="mono" id="players">—</span></div>
     </div>
     <div class="card">
       <h3>Champion of the day</h3>
@@ -88,15 +99,19 @@ const CFG = {
   fun: "0x7Cc4e096dd2309203A2102B34EEe6550722EF386",
   arcade: "0x9a1e51d31eF5CF7AaF90f7D4F9D43f6cc4D08B7C",
   deployBlock: 0x909e59a,
+  curve: "0x1053f2b175DB3fE4ce4A461f364BD9D489a2761e",
+  url: "https://vacas-coded.github.io/fun-arcade/",
 };
 const ARCADE_ABI = [
   "function play() returns (uint256)", "function submitScore(uint256 runId, uint32 score)",
   "function livesFor(address) view returns (uint8)", "function bestScore(address) view returns (uint32)",
-  "function today() view returns (uint256 day, address champion, uint32 score)", "function minHold() view returns (uint256)",
+  "function today() view returns (uint256 day, address champion, uint32 score)", "function totalRuns() view returns (uint256)", "function minHold() view returns (uint256)",
   "event RunStarted(uint256 indexed runId, address indexed player, uint8 lives, uint256 funBalance)",
   "event ScoreSubmitted(uint256 indexed runId, address indexed player, uint32 score, uint256 indexed day)",
 ];
 const ERC20 = ["function balanceOf(address) view returns (uint256)"];
+const CURVE_ABI = ["function quoteBuyExactIn(uint256 pairIn) view returns (uint256 gross, uint256 net, uint256 cost, uint256 pairFee, uint256 refund)",
+  "function buyExactIn(uint256 maxPairIn, uint256 minNetOut, address recipient, uint256 deadline) payable"];
 const $ = id => document.getElementById(id);
 $("buyLink").href = `https://testnet.vibevibe.fun/token/${CFG.fun}`;
 $("funLink").href = `${CFG.explorer}/address/${CFG.fun}`;
@@ -104,7 +119,7 @@ $("arcadeLink").href = `${CFG.explorer}/address/${CFG.arcade}`;
 
 const ro = new JsonRpcProvider(CFG.rpc, CFG.chainId, { staticNetwork: true });
 const arcadeRO = new Contract(CFG.arcade, ARCADE_ABI, ro);
-let signer = null, me = null, myLives = 0;
+let signer = null, me = null, myLives = 0, myFun = 0;
 const short = a => a ? a.slice(0, 6) + "…" + a.slice(-4) : "—";
 const status = t => $("status").textContent = t;
 
@@ -118,6 +133,7 @@ async function refreshBoard() {
       const logs = await arcadeRO.queryFilter(arcadeRO.filters.ScoreSubmitted(), from, Math.min(head, from + 49999));
       for (const l of logs) { const p = l.args.player, s = Number(l.args.score); if (!best.has(p) || best.get(p) < s) best.set(p, s); }
     }
+    $("players").textContent = best.size; $("runs").textContent = (await arcadeRO.totalRuns()).toString();
     const top = [...best.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
     $("board").innerHTML = top.length ? top.map(([p, s]) => `<li><span class="mono">${short(p)}</span> — <b>${s}</b></li>`).join("") : '<li class="small">No scores yet. Be the first!</li>';
   } catch (e) { $("board").innerHTML = '<li class="small">Leaderboard unavailable right now.</li>'; }
@@ -127,7 +143,8 @@ async function refreshMe() {
   if (!me) return;
   const fun = new Contract(CFG.fun, ERC20, ro);
   const [b, l, best] = await Promise.all([fun.balanceOf(me), arcadeRO.livesFor(me), arcadeRO.bestScore(me)]);
-  myLives = Number(l);
+  myLives = Number(l); myFun = Number(formatUnits(b, 18));
+  $("skin").textContent = myFun >= 250000 ? "💎 Diamond" : myFun >= 10000 ? "🟢 Holder" : "🪙 Classic";
   $("addr").textContent = short(me);
   $("bal").textContent = Number(formatUnits(b, 18)).toLocaleString(undefined, { maximumFractionDigits: 0 });
   $("lives").textContent = myLives || "0 (need FUN)";
@@ -150,14 +167,41 @@ $("connect").onclick = async () => {
   } catch (e) { status("Connection cancelled."); }
 };
 
+document.querySelectorAll(".buy").forEach(btn => btn.onclick = async () => {
+  if (!signer) { await $("connect").onclick(); if (!signer) return; }
+  try {
+    const eth = btn.dataset.eth, wei = BigInt(Math.round(Number(eth) * 1e18));
+    const cv2 = new Contract(CFG.curve, CURVE_ABI, signer);
+    const [, net] = await cv2.quoteBuyExactIn(wei);
+    status(`Buying ~${Math.round(Number(formatUnits(net, 18))).toLocaleString()} FUN… confirm in your wallet.`);
+    const tx = await cv2.buyExactIn(wei, net * 95n / 100n, me, BigInt(Math.floor(Date.now() / 1000) + 600), { value: wei });
+    await tx.wait(); await refreshMe(); status(`FUN bought ✔ You now have ${myLives} lives per run. Hit "Play on-chain"!`);
+  } catch (e) { status("Buy cancelled: " + (e.shortMessage || "rejected")); }
+});
+$("quickBuy").onclick = () => { $("quickBuy").style.display = "none"; document.querySelector('.buy[data-eth="0.0005"]').click(); };
+$("share").onclick = () => {
+  const t = `I scored ${lastScore} on Pump & Flap 🪙🕊️ dodging rug candles on Robinhood Chain.\nHold $FUN to play and beat me 👇`;
+  open(`https://x.com/intent/post?text=${encodeURIComponent(t)}&url=${encodeURIComponent(CFG.url)}`, "_blank");
+};
+// tiny synth sounds (no files) + haptics
+let AC = null, muted = localStorage.getItem("funMute") === "1";
+$("mute").textContent = muted ? "🔇" : "🔊";
+$("mute").onclick = () => { muted = !muted; localStorage.setItem("funMute", muted ? "1" : "0"); $("mute").textContent = muted ? "🔇" : "🔊"; };
+function beep(f, d = 0.07, type = "square", v = 0.04) {
+  if (muted) return; try { AC = AC || new AudioContext(); const o = AC.createOscillator(), gn = AC.createGain();
+  o.type = type; o.frequency.value = f; gn.gain.value = v; o.connect(gn); gn.connect(AC.destination); o.start();
+  gn.gain.exponentialRampToValueAtTime(0.0001, AC.currentTime + d); o.stop(AC.currentTime + d); } catch {}
+}
+let lastScore = 0;
+
 // ---------------- Game ----------------
 // Physics run at a fixed 60 steps/s, so the game feels the same on 60 Hz and 120 Hz phones.
 const cv = $("c"), g = cv.getContext("2d"), W = cv.width, H = cv.height;
 const P = { gravity: 0.21, flap: -5.0, maxFall: 6.2, hitShrink: 0.72, spacing: 235, gap0: 222, gapMin: 150, speed0: 2.1, speedMax: 4.0, maxShift: 170 };
-let state = "menu", bird, pipes, pumps, score, lives, frame, onchainRun = null, speed, invuln, ready, floaters;
-function reset(l) { bird = { x: 110, y: H / 2, vy: 0, r: 18 }; pipes = []; pumps = []; floaters = []; score = 0; lives = l; frame = 0; speed = P.speed0; invuln = 0; ready = true; hud(); }
+let state = "menu", bird, pipes, pumps, score, lives, frame, onchainRun = null, speed, invuln, ready, floaters, shield, shields, streak, skin;
+function reset(l) { bird = { x: 110, y: H / 2, vy: 0, r: 18 }; pipes = []; pumps = []; floaters = []; shields = []; streak = 0; shield = false; score = 0; lives = l; frame = 0; speed = P.speed0; invuln = 0; ready = true; hud(); }
 function hud() { $("hudScore").textContent = score; $("hudLives").textContent = state === "play" ? "♥".repeat(lives) : ""; }
-function flap() { if (state !== "play") return; if (ready) { ready = false; } bird.vy = P.flap; }
+function flap() { if (state !== "play") return; if (ready) { ready = false; } bird.vy = P.flap; beep(520, 0.05, "triangle", 0.03); }
 addEventListener("keydown", e => { if (e.code === "Space" || e.code === "ArrowUp") { e.preventDefault(); flap(); } });
 cv.addEventListener("pointerdown", e => { e.preventDefault(); flap(); });
 
@@ -167,7 +211,9 @@ function spawn() {
   let top = 70 + Math.random() * (H - gap - 170);
   if (last) top = Math.max(last.top - P.maxShift, Math.min(last.top + P.maxShift, top)); // always reachable from the previous gap
   pipes.push({ x: W + 30, top, gap, w: 58, passed: false });
-  if (Math.random() < 0.35) pumps.push({ x: W + 30 + 29, y: top + gap / 2, taken: false });
+  const r = Math.random();
+  if (r < 0.33) pumps.push({ x: W + 30 + 29, y: top + gap / 2, taken: false });
+  else if (r < 0.40 && score > 4) shields.push({ x: W + 30 + 29, y: top + gap / 2, taken: false });
 }
 function candle(x, y, w, h, col) {
   g.fillStyle = col; g.fillRect(x + w / 2 - 2, y - 14, 4, h + 28); g.fillRect(x, y, w, h);
@@ -176,7 +222,9 @@ function candle(x, y, w, h, col) {
 function drawBird() {
   const b = bird; g.save(); g.translate(b.x, b.y); g.rotate(Math.max(-0.45, Math.min(0.8, b.vy / 9)));
   if (invuln > 0 && Math.floor(invuln / 5) % 2) g.globalAlpha = 0.4;
-  g.fillStyle = "#ffd60a"; g.beginPath(); g.arc(0, 0, b.r, 0, 7); g.fill(); g.strokeStyle = "#b8860b"; g.lineWidth = 3; g.stroke();
+  const body = skin === "diamond" ? "#7df9ff" : skin === "holder" ? "#2ee59d" : "#ffd60a", rim = skin === "diamond" ? "#1e90ff" : skin === "holder" ? "#11865a" : "#b8860b";
+  if (shield) { g.strokeStyle = "rgba(125,249,255,.85)"; g.lineWidth = 3; g.beginPath(); g.arc(0, 0, b.r + 9 + Math.sin(frame / 6) * 2, 0, 7); g.stroke(); }
+  g.fillStyle = body; g.beginPath(); g.arc(0, 0, b.r, 0, 7); g.fill(); g.strokeStyle = rim; g.lineWidth = 3; g.stroke();
   g.fillStyle = "#fff"; g.beginPath(); g.ellipse(-12, 4 + Math.sin(frame / 3) * 4, 11, 6, -0.5, 0, 7); g.fill();
   g.fillStyle = "#111"; g.beginPath(); g.arc(7, -5, 3.5, 0, 7); g.fill();
   g.fillStyle = "#ff7b00"; g.beginPath(); g.moveTo(16, 0); g.lineTo(26, 3); g.lineTo(16, 7); g.fill();
@@ -187,7 +235,11 @@ function bg() {
   g.strokeStyle = "rgba(255,255,255,.05)"; for (let y = 40; y < H; y += 60) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
 }
 function hit() {
-  if (invuln > 0) return; lives -= 1; hud();
+  if (invuln > 0) return;
+  streak = 0;
+  if (shield) { shield = false; invuln = 60; bird.vy = P.flap * 0.8; beep(300, 0.12, "sawtooth", 0.04); floaters.push({ x: bird.x, y: bird.y - 30, t: 40, txt: "💎 saved!", col: "#7df9ff" }); return; }
+  beep(140, 0.25, "sawtooth", 0.06); try { navigator.vibrate && navigator.vibrate(120); } catch {}
+  lives -= 1; hud();
   if (lives <= 0) return gameOver();
   invuln = 90; bird.vy = P.flap * 0.8; // short grace period after losing a life
 }
@@ -202,10 +254,12 @@ function update() {
   const r = bird.r * P.hitShrink;
   for (const p of pipes) {
     p.x -= speed;
-    if (!p.passed && p.x + p.w < bird.x) { p.passed = true; score++; hud(); }
+    if (!p.passed && p.x + p.w < bird.x) { p.passed = true; score++; streak++; beep(880, 0.05); if (streak % 10 === 0) { score += 5; floaters.push({ x: bird.x + 40, y: bird.y - 20, t: 50, txt: `🔥 STREAK ${streak} +5`, col: "#ffd60a" }); beep(1200, 0.15, "triangle"); } hud(); }
     if (bird.x + r > p.x && bird.x - r < p.x + p.w && (bird.y - r < p.top || bird.y + r > p.top + p.gap)) hit();
   }
-  for (const u of pumps) { u.x -= speed; if (!u.taken && Math.hypot(u.x - bird.x, u.y - bird.y) < bird.r + 14) { u.taken = true; score += 3; hud(); floaters.push({ x: u.x, y: u.y, t: 40 }); } }
+  for (const u of pumps) { u.x -= speed; if (!u.taken && Math.hypot(u.x - bird.x, u.y - bird.y) < bird.r + 14) { u.taken = true; score += 3; hud(); beep(1046, 0.08, "triangle"); floaters.push({ x: u.x, y: u.y, t: 40 }); } }
+  for (const u of shields) { u.x -= speed; if (!u.taken && Math.hypot(u.x - bird.x, u.y - bird.y) < bird.r + 14) { u.taken = true; shield = true; beep(660, 0.15, "sine", 0.05); floaters.push({ x: u.x, y: u.y, t: 40, txt: "💎 shield", col: "#7df9ff" }); } }
+  shields = shields.filter(u => u.x > -40 && !u.taken);
   for (const f of floaters) { f.y -= 1; f.t--; }
   pipes = pipes.filter(p => p.x > -80); pumps = pumps.filter(u => u.x > -40 && !u.taken); floaters = floaters.filter(f => f.t > 0);
   if (bird.y < bird.r) { bird.y = bird.r; bird.vy = 0; } // the ceiling stops you, it does not kill
@@ -215,7 +269,8 @@ function draw() {
   bg();
   for (const p of pipes) { candle(p.x, 0, p.w, p.top, "#ff4d6d"); candle(p.x, p.top + p.gap, p.w, H - p.top - p.gap, "#ff4d6d"); }
   for (const u of pumps) { g.fillStyle = "#2ee59d"; g.fillRect(u.x - 7, u.y - 16, 14, 32); g.fillRect(u.x - 1, u.y - 24, 2, 48); g.fillStyle = "#fff"; g.font = "bold 11px sans-serif"; g.textAlign = "center"; g.fillText("+3", u.x, u.y + 4); }
-  for (const f of floaters) { g.globalAlpha = f.t / 40; g.fillStyle = "#2ee59d"; g.font = "bold 22px sans-serif"; g.textAlign = "center"; g.fillText("+3", f.x, f.y); g.globalAlpha = 1; }
+  for (const u of shields) { g.font = "26px sans-serif"; g.textAlign = "center"; g.fillText("💎", u.x, u.y + 9); }
+  for (const f of floaters) { g.globalAlpha = Math.min(1, f.t / 40); g.fillStyle = f.col || "#2ee59d"; g.font = "bold 22px sans-serif"; g.textAlign = "center"; g.fillText(f.txt || "+3", f.x, f.y); g.globalAlpha = 1; }
   drawBird();
   if (state === "play" && ready) { g.fillStyle = "#fff"; g.font = "bold 24px sans-serif"; g.textAlign = "center"; g.fillText("Tap to flap!", W / 2, H / 2 + 90); }
 }
@@ -228,7 +283,7 @@ function loop(t) {
 window.__game = { P, get state() { return state; }, get bird() { return bird; }, get pipes() { return pipes; }, get score() { return score; }, flap, update, start: l => start(l) };
 
 async function gameOver() {
-  state = "over"; hud(); const final = score;
+  state = "over"; hud(); const final = score; lastScore = final; $("share").style.display = "block";
   $("menu").style.display = "flex";
   const best = Math.max(final, Number(localStorage.getItem("funBest") || 0)); localStorage.setItem("funBest", best);
   $("menu").querySelector("h2").textContent = `Score: ${final}`;
@@ -238,11 +293,11 @@ async function gameOver() {
     try {
       const ac = new Contract(CFG.arcade, ARCADE_ABI, signer);
       const tx = await ac.submitScore(onchainRun, final); await tx.wait();
-      status(`Score ${final} recorded on-chain ✔`); onchainRun = null; await Promise.all([refreshMe(), refreshBoard()]);
+      onchainRun = null; await Promise.all([refreshMe(), refreshBoard()]); status(`Score ${final} recorded on-chain ✔ Share it and challenge your friends!`);
     } catch (e) { status("Score not saved (rejected or expired). Runs expire 1 h after starting."); }
-  } else status("Practice run — connect a wallet with FUN to compete.");
+  } else status(myLives > 0 ? "Practice run — play on-chain to enter the leaderboard." : "Practice run — buy a little $FUN to save scores and fight for Champion of the day."); if (myLives === 0) $("quickBuy").style.display = "block";
 }
-function start(l) { reset(l); state = "play"; $("menu").style.display = "none"; hud(); }
+function start(l, chain = false) { reset(l); skin = chain && myFun >= 250000 ? "diamond" : chain && myFun >= 10000 ? "holder" : "classic"; shield = chain && myFun >= 250000; state = "play"; $("menu").style.display = "none"; hud(); }
 $("playFree").onclick = () => { onchainRun = null; start(1); };
 $("playChain").onclick = async () => {
   try {
@@ -250,7 +305,7 @@ $("playChain").onclick = async () => {
     const ac = new Contract(CFG.arcade, ARCADE_ABI, signer);
     const tx = await ac.play(); const rc = await tx.wait();
     const ev = rc.logs.map(l => { try { return ac.interface.parseLog(l); } catch { return null; } }).find(x => x && x.name === "RunStarted");
-    onchainRun = ev.args.runId; start(Number(ev.args.lives));
+    onchainRun = ev.args.runId; start(Number(ev.args.lives), true);
   } catch (e) { status("Run not started: " + (e.shortMessage || "cancelled")); }
 };
 reset(1); requestAnimationFrame(loop); refreshBoard();

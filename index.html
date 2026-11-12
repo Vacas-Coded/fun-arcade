@@ -42,6 +42,12 @@
   .hud { position:absolute; top:10px; left:0; right:0; display:flex; justify-content:space-between; padding:0 14px; font-weight:800; font-size:20px; pointer-events:none; text-shadow:0 2px 0 #000; }
   .small { font-size:12px; color:var(--mute); }
   #status { min-height:20px; }
+  .farm { max-width:980px; margin:0 auto 12px; padding:10px 14px; border-radius:14px; background:linear-gradient(90deg,rgba(46,229,157,.18),rgba(43,134,197,.18)); border:1px solid rgba(46,229,157,.35); font-size:14px; }
+  .steps { list-style:none; padding:0; margin:0; } .steps li { display:flex; align-items:center; gap:8px; padding:5px 0; }
+  .steps li span:nth-child(2) { flex:1; } .tick { width:22px; height:22px; border-radius:50%; background:#2d2050; display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; }
+  .steps li.done .tick { background:var(--green); color:#062; } .steps li.done .tick::after { content:"✓"; } .steps li.done .tick { font-size:0; } .steps li.done .tick::after { font-size:13px; }
+  .mini { padding:5px 10px; font-size:12px; border-radius:9px; text-decoration:none; display:inline-block; }
+  .deeplinks { display:flex; gap:6px; flex-wrap:wrap; justify-content:center; } .deeplinks a { color:#fff; }
 </style>
 </head>
 <body>
@@ -49,6 +55,7 @@
   <h1><b>FUN</b> Arcade · Pump &amp; Flap</h1>
   <button class="btn2" id="connect">Connect wallet</button>
 </header>
+<div class="farm">🌾 <b>Farming the vibe/vibe testnet airdrop?</b> Every $FUN buy is a real trade on vibe/vibe (5% of $VIBEVIBE goes to testnet users). Play while you farm. <span class="small">Rewards are decided by vibe/vibe, not guaranteed.</span></div>
 <main>
   <div>
     <div class="stage" id="stage">
@@ -67,6 +74,16 @@
     </div>
   </div>
   <div class="side">
+    <div class="card" id="onboard">
+      <h3>Start in 4 steps · free</h3>
+      <ol class="steps">
+        <li id="st1"><span class="tick">1</span> <span>Wallet</span> <span id="st1a"></span></li>
+        <li id="st2"><span class="tick">2</span> <span>Robinhood testnet</span> <button class="btn2 mini" id="addNet">Add network</button></li>
+        <li id="st3"><span class="tick">3</span> <span>Free test ETH</span> <a class="btn2 mini" href="https://faucet.testnet.chain.robinhood.com/" target="_blank" rel="noopener">Faucet ↗</a></li>
+        <li id="st4"><span class="tick">4</span> <span>Hold 10k $FUN</span> <button class="btn mini" id="stBuy">Buy</button></li>
+      </ol>
+      <p class="small" id="stHint">Test ETH is free (0.01/day from Robinhood's faucet). 0.0002 test ETH buys ~130k FUN.</p>
+    </div>
     <div class="card">
       <h3>Your wallet</h3>
       <div class="row"><span>Address</span><span class="mono" id="addr">—</span></div>
@@ -84,7 +101,7 @@
       <div class="row"><span>Players</span><span class="mono" id="players">—</span></div>
     </div>
     <div class="card">
-      <h3>Champion of the day</h3>
+      <h3>Champion of the day 👑 <span class="small" id="crownLeft"></span></h3>
       <div class="row"><span class="mono" id="champ">—</span><span class="mono" id="champScore"></span></div>
     </div>
     <div class="card">
@@ -143,6 +160,7 @@ async function refreshBoard() {
     }
     $("players").textContent = best.size; $("runs").textContent = (await arcadeRO.totalRuns()).toString();
     const top = [...best.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
+    boardScores = [...best.values()].sort((a, b) => b - a); todayBest = Number(cs);
     $("board").innerHTML = top.length ? top.map(([p, s]) => `<li><span class="mono">${short(p)}</span> — <b>${s}</b></li>`).join("") : '<li class="small">No scores yet. Be the first!</li>';
   } catch (e) { $("board").innerHTML = '<li class="small">Leaderboard unavailable right now.</li>'; }
 }
@@ -159,10 +177,11 @@ async function refreshMe() {
   $("best").textContent = best.toString();
   $("playChain").disabled = myLives === 0;
   status(myLives === 0 ? "You need at least 10,000 $FUN to play on-chain." : `Ready: ${myLives} lives per run.`);
+  refreshSteps();
 }
 
 $("connect").onclick = async () => {
-  if (!window.ethereum) { status("No wallet found. Open this page in your wallet's browser (Rabby, MetaMask…)."); return; }
+  if (!window.ethereum) { showDeepLinks(); return; }
   try {
     await window.ethereum.request({ method: "eth_requestAccounts" });
     try { await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: CFG.chainHex }] }); }
@@ -175,6 +194,37 @@ $("connect").onclick = async () => {
   } catch (e) { status("Connection cancelled."); }
 };
 
+function showDeepLinks() {
+  const host = location.host + location.pathname, full = location.href.split("#")[0];
+  $("status").innerHTML = `No wallet in this browser. Open the arcade inside your wallet app:<div class="deeplinks" style="margin-top:8px">
+    <a class="btn2 mini" href="https://metamask.app.link/dapp/${host}">MetaMask</a>
+    <a class="btn2 mini" href="https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(full)}">Coinbase Wallet</a>
+    <a class="btn2 mini" href="okx://wallet/dapp/url?dappUrl=${encodeURIComponent(full)}">OKX</a>
+    <a class="btn2 mini" href="https://link.trustwallet.com/open_url?coin_id=60&url=${encodeURIComponent(full)}">Trust</a></div>
+    <span class="small">On desktop: install Rabby or MetaMask and reload.</span>`;
+  $("menu").style.display = "flex";
+}
+async function addNetwork() {
+  if (!window.ethereum) return showDeepLinks();
+  try { await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: CFG.chainHex }] }); }
+  catch (e) { await window.ethereum.request({ method: "wallet_addEthereumChain", params: [{ chainId: CFG.chainHex, chainName: "Robinhood Chain Testnet",
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: [CFG.rpc], blockExplorerUrls: [CFG.explorer] }] }); }
+  await refreshSteps();
+}
+async function refreshSteps() {
+  const set = (id, ok) => $(id).classList.toggle("done", !!ok);
+  set("st1", !!me); $("st1a").textContent = me ? short(me) : "";
+  if (!me) { $("stHint").textContent = "Tap Connect wallet to start. Test ETH is free (0.01/day from Robinhood's faucet)."; return; }
+  let onChain = false, eth = 0n;
+  try { onChain = (await window.ethereum.request({ method: "eth_chainId" })).toLowerCase() === CFG.chainHex; } catch {}
+  try { eth = await ro.getBalance(me); } catch {}
+  set("st2", onChain); set("st3", eth > 30000000000000n); set("st4", myLives > 0);
+  $("stHint").textContent = myLives > 0 ? `All set: ${myLives} lives per run. Go for today's crown 👑` :
+    eth > 30000000000000n ? "You have test ETH. Buy a bit of FUN (step 4) and play on-chain." :
+    "Claim free test ETH at the faucet (paste your address), then come back and buy FUN.";
+}
+$("addNet").onclick = addNetwork;
+$("stBuy").onclick = () => document.querySelector('.buy[data-eth="0.0002"]').click();
 document.querySelectorAll(".buy").forEach(btn => btn.onclick = async () => {
   if (!signer) { await $("connect").onclick(); if (!signer) return; }
   try {
@@ -188,7 +238,7 @@ document.querySelectorAll(".buy").forEach(btn => btn.onclick = async () => {
 });
 $("quickBuy").onclick = () => { $("quickBuy").style.display = "none"; document.querySelector('.buy[data-eth="0.0005"]').click(); };
 $("share").onclick = () => {
-  const t = `I scored ${lastScore} on Pump & Flap 🪙🕊️ dodging rug candles on Robinhood Chain.\nHold $FUN to play and beat me 👇`;
+  const t = `I scored ${lastScore} on Pump & Flap 🪙🕊️ dodging rug candles on Robinhood Chain.\nHold $FUN to play and beat me 👇 (free testnet, counts as vibe/vibe activity)`;
   open(`https://x.com/intent/post?text=${encodeURIComponent(t)}&url=${encodeURIComponent(CFG.url)}`, "_blank");
 };
 // tiny synth sounds (no files) + haptics
@@ -200,7 +250,12 @@ function beep(f, d = 0.07, type = "square", v = 0.04) {
   o.type = type; o.frequency.value = f; gn.gain.value = v; o.connect(gn); gn.connect(AC.destination); o.start();
   gn.gain.exponentialRampToValueAtTime(0.0001, AC.currentTime + d); o.stop(AC.currentTime + d); } catch {}
 }
-let lastScore = 0;
+let lastScore = 0, boardScores = [], todayBest = 0;
+function crownCountdown() {
+  const ms = 86400000 - (Date.now() % 86400000), h = Math.floor(ms / 3600000), m = Math.floor(ms / 60000) % 60;
+  $("crownLeft").textContent = `crown resets in ${h}h ${m}m`;
+}
+setInterval(crownCountdown, 30000);
 
 // ---------------- Game ----------------
 // Physics run at a fixed 60 steps/s, so the game feels the same on 60 Hz and 120 Hz phones.
@@ -303,6 +358,11 @@ async function gameOver() {
       const tx = await ac.submitScore(onchainRun, final); await tx.wait();
       onchainRun = null; await Promise.all([refreshMe(), refreshBoard()]); status(`Score ${final} recorded on-chain ✔ Share it and challenge your friends!`);
     } catch (e) { status("Score not saved (rejected or expired). Runs expire 1 h after starting."); }
+  } else if (myLives === 0 && final > 0) {
+    const rank = boardScores.filter(x => x > final).length + 1;
+    status(final > todayBest ? `👑 ${final} beats today's champion (${todayBest})! Grab 10k $FUN and do it on-chain to take the crown.` :
+      `That score would rank #${rank} all-time. Hold 10k $FUN to put it on-chain.`);
+    $("quickBuy").style.display = "block";
   } else status(myLives > 0 ? "Practice run — play on-chain to enter the leaderboard." : "Practice run — buy a little $FUN to save scores and fight for Champion of the day."); if (myLives === 0) $("quickBuy").style.display = "block";
 }
 function start(l, chain = false) { reset(l); skin = chain && myFun >= 250000 ? "diamond" : chain && myFun >= 10000 ? "holder" : "classic"; shield = chain && myFun >= 250000; state = "play"; $("menu").style.display = "none"; hud(); }
@@ -316,7 +376,8 @@ $("playChain").onclick = async () => {
     onchainRun = ev.args.runId; start(Number(ev.args.lives), true);
   } catch (e) { status("Run not started: " + (e.shortMessage || "cancelled")); }
 };
-reset(1); requestAnimationFrame(loop); refreshBoard();
+reset(1); requestAnimationFrame(loop); refreshBoard(); crownCountdown(); refreshSteps();
+if (window.ethereum) window.ethereum.request({ method: "eth_accounts" }).then(a => a && a.length && $("connect").onclick()).catch(() => {});
 </script>
 </body>
 </html>

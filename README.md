@@ -13,6 +13,8 @@ Dodge the red rug candles, grab green pumps (+3) and become the champion of the 
 - **Practice mode:** play without a wallet. Practice scores are not recorded.
 
 ## Features
+- **4-step onboarding (free):** connect wallet, add Robinhood testnet in one tap, claim free test ETH at the official faucet, buy 10k $FUN. Each step ticks green when done. Mobile users without a wallet get deep links to open the arcade inside MetaMask, Coinbase Wallet, OKX or Trust.
+- **Crown countdown:** time left until today's champion is locked, and practice scores show where they would rank.
 - **Buy $FUN in-game:** one tap buys straight from the $FUN bonding curve on vibe/vibe (0.0002 / 0.0005 / 0.001 ETH).
 - **Holder perks:** holders of 10k+ FUN get the green Holder skin. Holders of 250k+ get the 💎 Diamond skin and start every run with a shield.
 - **💎 Shield pickups:** a shield absorbs one hit.
